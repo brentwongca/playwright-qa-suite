@@ -1,13 +1,24 @@
-# Playwright + pytest test suite — Swag Labs demo storefront
+# UI and API test suite — pytest, Playwright and requests
 
-An end-to-end suite I wrote to practise the testing craft on a public demo
-application: [saucedemo.com](https://www.saucedemo.com). 26 automated cases
-across login, the product list, the cart and checkout, with page objects, a
-written test plan, a traceability table, and CI that runs the suite on every
-push and once a night.
+[![tests](https://github.com/brentwongca/playwright-qa-suite/actions/workflows/tests.yml/badge.svg)](https://github.com/brentwongca/playwright-qa-suite/actions/workflows/tests.yml)
 
-Nothing here touches private data: the site is a demo storefront and the
-credentials are the ones it publishes on its own login page.
+A portfolio test suite I wrote to practise the testing craft against two public
+practice applications, in the two layers most jobs ask for:
+
+- **UI** — 26 end-to-end cases against [saucedemo.com](https://www.saucedemo.com),
+  driven with Playwright and organised behind page objects.
+- **API** — 20 cases against the
+  [Restful Booker](https://restful-booker.herokuapp.com) REST API, driven with
+  `requests`: token auth, the full booking lifecycle, response-shape checks and
+  negative cases.
+
+Both layers share one test plan, one traceability table and one CI pipeline
+that runs on every push and once a night. **Two real defects** found in the API
+are written up in [`docs/BUG_REPORTS.md`](docs/BUG_REPORTS.md), each with a
+failing test pinned to it.
+
+Nothing here touches private data: both are public practice services and the
+credentials are the ones they publish in their own documentation.
 
 ## Run it
 
@@ -15,17 +26,20 @@ credentials are the ones it publishes on its own login page.
 python -m venv .venv && .venv\Scripts\activate      # Windows
 pip install -r requirements.txt
 python -m playwright install chromium
-pytest                                               # all 26 cases, headless
+pytest                                               # all 46 cases
 ```
 
 Useful variations:
 
 ```bash
-pytest -m smoke                 # the four cases that must pass before anything else
+pytest tests/api                # API only - no browser needed, runs in ~15s
+pytest tests/ui                 # UI only
+pytest -m smoke                 # the handful that must pass before anything else
 pytest -m "login or checkout"   # one area at a time
-pytest --headed --slowmo 300    # watch it run
+pytest --headed --slowmo 300    # watch the UI cases run
 pytest -n 4                     # in parallel
 pytest --base-url-override https://staging.example.com
+BOOKER_BASE_URL=https://booker.internal pytest tests/api
 ```
 
 Every run writes `reports/report.html`, with a full-page screenshot attached to
@@ -33,12 +47,26 @@ any failure.
 
 ## What is covered
 
+**UI layer**
+
 | Area | Cases | File |
 |---|---|---|
-| Login, including the locked-out account and five rejected inputs | 8 | `tests/test_login.py` |
-| Product list: catalogue size, four sort orders, cart badge, prices | 8 | `tests/test_inventory.py` |
-| Cart: contents, persistence across navigation, removal | 4 | `tests/test_cart.py` |
-| Checkout: three required-field errors, totals arithmetic, two completed orders | 6 | `tests/test_checkout.py` |
+| Login, including the locked-out account and five rejected inputs | 8 | `tests/ui/test_login.py` |
+| Product list: catalogue size, four sort orders, cart badge, prices | 8 | `tests/ui/test_inventory.py` |
+| Cart: contents, persistence across navigation, removal | 4 | `tests/ui/test_cart.py` |
+| Checkout: three required-field errors, totals arithmetic, two completed orders | 6 | `tests/ui/test_checkout.py` |
+
+**API layer**
+
+| Area | Cases | File |
+|---|---|---|
+| Health check, token issuing, three rejected credential sets, writes refused without a token | 6 | `tests/api/test_auth.py` |
+| Booking lifecycle: create, read back, list, filter by name, full update, partial update, delete | 7 | `tests/api/test_booking_crud.py` |
+| Negative cases: unknown ids, missing fields, reversed dates, stored types | 7 | `tests/api/test_booking_validation.py` |
+
+Two of the negative cases are `xfail(strict=True)` against the defects in
+`docs/BUG_REPORTS.md`: the suite stays green while a defect stands and turns
+red the moment it is fixed, which is the signal to revisit the write-up.
 
 `docs/TEST_CASES.md` maps every case ID to the test that covers it, and lists
 the three cases I decided to keep manual and why.
@@ -46,11 +74,12 @@ the three cases I decided to keep manual and why.
 ## How it is put together
 
 ```
-pages/        one class per screen: locators and actions, no assertions in tests about raw selectors
-tests/        one file per area, markers for selective runs
-conftest.py   fixtures (base URL, credentials, an already-logged-in session) and failure screenshots
-docs/         test plan, case list with traceability, defect report template
-.github/      CI workflow: install, run, publish the HTML report as an artifact
+pages/           one class per screen: locators and actions, no raw selectors in the tests
+tests/ui/        the browser layer, one file per area
+tests/api/       the HTTP layer: client.py wraps the endpoints, schema.py checks response shape
+conftest.py      UI fixtures (base URL, credentials, a logged-in session) and failure screenshots
+docs/            test plan, case list with traceability, defect reports, report template
+.github/         CI: an API job that needs no browser, and a UI job that does
 ```
 
 Decisions worth naming:
